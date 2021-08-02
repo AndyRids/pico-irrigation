@@ -22,15 +22,16 @@ extern uint8_t send_msg;
 
 extern uint8_t PRX_ADDR_P0[5];
 extern uint8_t PRX_ADDR_P1[5];
-
-extern uint8_t PRX_ADDR_P2;
-extern uint8_t PRX_ADDR_P3;
-extern uint8_t PRX_ADDR_P4;
-extern uint8_t PRX_ADDR_P5;
+extern uint8_t PRX_ADDR_P2[5];
+extern uint8_t PRX_ADDR_P3[5];
+extern uint8_t PRX_ADDR_P4[5];
+extern uint8_t PRX_ADDR_P5[5];
 
 #define ADDR_WIDTH 0x03
 
 #define PAYLOAD_WIDTH 5
+
+#define LSB 0
 
 // Initialise SPI and GPIO pins
 void init_spi();
