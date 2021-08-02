@@ -81,4 +81,13 @@
 #define TX_DS   5 // Bit 5
 #define MAX_RT  4 // Bit 4
 
+/**
+ * FIFO_STATUS register RX_EMPTY flag bit:
+ * 
+ * RX_EMPTY (bit 0) is set (1) when the 
+ * RX FIFO is empty and reset (0) when
+ * there is data in the RX FIFO.
+**/
+#define RX_EMPTY 0 // Bit 0
+
 #endif
