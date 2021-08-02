@@ -4,13 +4,12 @@ static char bufferIn[5];
 
 uint8_t send_msg = false;
 
-uint8_t PRX_ADDR_P0[5] = {0xA1, 0xF0, 0xF0, 0xE8, 0xE8};
-uint8_t PRX_ADDR_P1[5] = {0xA2, 0xF0, 0xF0, 0xE8, 0xE8};
-
-uint8_t PRX_ADDR_P2 = 0xA3;
-uint8_t PRX_ADDR_P3 = 0xA4;
-uint8_t PRX_ADDR_P4 = 0xA5;
-uint8_t PRX_ADDR_P5 = 0xA6;
+uint8_t PRX_ADDR_P0[5] = {0x37, 0x37, 0x37, 0x37, 0x37};
+uint8_t PRX_ADDR_P1[5] = {0xC7, 0xC7, 0xC7, 0xC7, 0xC7};
+uint8_t PRX_ADDR_P2[5] = {0xC3, 0xC7, 0xC7, 0xC7, 0xC7};
+uint8_t PRX_ADDR_P3[5] = {0xC4, 0xC7, 0xC7, 0xC7, 0xC7};
+uint8_t PRX_ADDR_P4[5] = {0xC5, 0xC7, 0xC7, 0xC7, 0xC7};
+uint8_t PRX_ADDR_P5[5] = {0xC6, 0xC7, 0xC7, 0xC7, 0xC7};
 
 /**
  * 1. Initialise I/O for USB serial and all present stdio types.
@@ -360,13 +359,31 @@ void init_nrf24() {
   w_register(RX_PW_P5, FIVE_BYTES);
 }
 
+
+/**
+ * Setup registers relevant to a primary transmitter (PTX).
+ * TX_ADDR must be the same as an address in primary receiver
+ * (PRX) RX_ADDR_P0 - RX_ADDR_P5 registers, for PTX and PRX to
+ * communicate. If using auto-acknowledge feature, the PTX must
+ * have its RX_ADDR_P0 register set with the same address as the
+ * TX_ADDR register.
+ * 
+ * @param address PRX_ADDR_P0 - PRX_ADDR_P5
+ */
 void init_nrf24_ptx_registers(uint8_t *address) {
   w_address(RX_ADDR_P0, address, FIVE_BYTES);
   w_address(TX_ADDR, address, FIVE_BYTES);
-
-  w_register(RX_PW_P0, FIVE_BYTES);
 }
 
+
+/**
+ * Setup registers relevant to a primary receiver (PRX).
+ * 
+ * 1. Enable all Rx address for all data pipes
+ * 2. Set unique Rx address for all data pipes
+ * 
+ * @param address PRX_ADDR_P0 - PRX_ADDR_P5
+ */
 void init_nrf24_prx_registers() {
   /**
    * EN_RXADDR register (0x02):
@@ -388,13 +405,27 @@ void init_nrf24_prx_registers() {
   **/
   w_register(EN_RXADDR, 0b00111111); // All Rx addresses enabled
 
+  /**
+   * A primary receiver (PRX) can receive data from
+   * six primary transmitters (PTX), one per data pipe.
+   * Each data pipe has a unique address.
+   * 
+   * 1. RX_ADDR_P0 and RX_ADDR_P1 can have a maximum of
+   * a five byte address set. The size of the address is
+   * set using the SETUP_AW register (0x03). This project
+   * uses a five byte address width.
+   * 
+   * 2. RX_ADDR_P2 - RX_ADDR_P3 automatically share bits
+   * 8 - 39 MSB of RX_ADDR_P1 and are simply set with a 
+   * unique 1 byte value (LSB), which would act as bits 
+   * 0 - 7 of the full 40 bit address.
+  **/
   w_address(RX_ADDR_P0, PRX_ADDR_P0, FIVE_BYTES);
   w_address(RX_ADDR_P1, PRX_ADDR_P1, FIVE_BYTES);
-
-  w_register(RX_ADDR_P2, PRX_ADDR_P2);
-  w_register(RX_ADDR_P3, PRX_ADDR_P2);
-  w_register(RX_ADDR_P4, PRX_ADDR_P2);
-  w_register(RX_ADDR_P5, PRX_ADDR_P2);
+  w_address(RX_ADDR_P2, &PRX_ADDR_P2[LSB], ONE_BYTE);
+  w_address(RX_ADDR_P3, &PRX_ADDR_P3[LSB], ONE_BYTE);
+  w_address(RX_ADDR_P4, &PRX_ADDR_P4[LSB], ONE_BYTE);
+  w_address(RX_ADDR_P5, &PRX_ADDR_P5[LSB], ONE_BYTE);
 }
 
 /**
@@ -531,9 +562,58 @@ void button_irq_handler() {
 }
 
 void nrf24_irq_handler() {
-  rx_message(bufferIn);
-  printf("Message: %s\n", bufferIn);
-  w_register(STATUS, 0b01110000);
+  // Value of STATUS/FIFO_STATUS register
+  uint8_t status, fifo_status;
+
+  // Value of STATUS register interrupt bits 
+  uint8_t rx_dr, tx_ds, max_rt;
+  
+  // Value of FIFO_STATUS RX FIFO empty flag
+  uint8_t rx_empty;
+
+  // Value of the STATUS register
+  status = r_register(STATUS);
+
+  // Test which interrupt was asserted
+  rx_dr = (status >> RX_DR) & 1; // Asserted when packet received
+  tx_ds = (status >> TX_DS) & 1; // Asserted when auto-acknowledge received
+  max_rt = (status >> MAX_RT) & 1; // Asserted when max retries reached
+
+  // Value of the FIFO_STATUS register
+  fifo_status = r_register(FIFO_STATUS);
+
+  // Test if RX FIFO is empty (1) or not (0)
+  rx_empty = (fifo_status >> RX_EMPTY) & 1;
+
+  if (rx_dr)
+  {
+    while (!rx_empty)
+    {
+      rx_message(bufferIn);
+      printf("Message: %s\n", bufferIn);
+
+      fifo_status = r_register(FIFO_STATUS); // Read value of STATUS register again
+      rx_empty = (fifo_status >> RX_EMPTY) & 1; // Check if RX FIFO is now empty (1) or not (0)
+    }
+    // Reset RX_DR (bit 6) in STATUS register by writing 1
+    w_register(STATUS, (1 << RX_DR));
+  }
+
+  if (tx_ds)
+  {
+     printf("Ack received from PRX");
+
+    // Reset TX_DS (bit 5) in STATUS register by writing 1
+    w_register(STATUS, (1 << TX_DS));
+  }
+
+  if (max_rt)
+  {
+    printf("Max retries without PRX ack reached");
+
+    // Reset MAX_RT (bit 4) in STATUS register by writing 1
+    w_register(STATUS, (1 << MAX_RT));
+  }
 }
 
 void debug_registers() {
