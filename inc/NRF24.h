@@ -81,6 +81,7 @@ uint8_t is_message();
 // IRQ interrupt handler
 void nrf24_irq_handler();
 
+// Push button IRQ handler
 void button_irq_handler();
 
 // printf register values
