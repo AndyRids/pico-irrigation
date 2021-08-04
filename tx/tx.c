@@ -4,6 +4,7 @@
 
 int main()
 {
+  // Tx message counter
   uint8_t msg = 1;
 
   init_spi(); // Initialise SPI and GPIO pins
@@ -24,20 +25,23 @@ int main()
   // Enable IRQ for PIN_BTN GPIO. Will use same interrupt handler (irq_handler)
   gpio_set_irq_enabled(PIN_BTN, GPIO_IRQ_EDGE_FALL, true);
 
-  uint8_t value;
-
   while(true)
   {
+    // send_msg is set to true in irq_handler, if the GPIO that triggered the interrupt is PIN_BTN
     if (send_msg)
     {
+      // Reset send_msg flag
       send_msg = false;
 
+      // Put test string variable into bufferOut
       sprintf(bufferOut, "12345");
 
+      // Tx bufferOut
       tx_message(bufferOut);
 
       printf("Tx message (%d): %s\n", msg, bufferOut);
 
+      // Tx message counter for debugging/testing
       msg++;
     }
   }
