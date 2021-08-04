@@ -4,23 +4,27 @@
 
 int main()
 {
-  
-  char bufferOut[5];
   uint8_t msg = 1;
 
-  init_spi(); // Initialise SPI and GPIO
+  init_spi(); // Initialise SPI and GPIO pins
 
-  init_nrf24();
+  init_nrf24(); // Initial config when device first powered
 
-  init_nrf24_ptx_registers(PRX_ADDR_P0);
+  init_nrf24_ptx_registers(PRX_ADDR_P3); // Config PTX specific registers
 
-  sleep_ms(10000);
+  sleep_ms(10000); // Sleep for 10s to facilitate opening PuTTy to read printf output
 
-  debug_registers();
+  debug_registers(); // printf register values
 
-  set_mode(TX_MODE);
+  set_mode(TX_MODE); // Activate TX_MODE
 
-  gpio_set_irq_enabled_with_callback(PIN_BTN, GPIO_IRQ_EDGE_RISE, true, &button_irq_handler);
+  // Enable IRQ for PIN_IRQ GPIO and set interrupt handler (irq_handler)
+  gpio_set_irq_enabled_with_callback(PIN_IRQ, GPIO_IRQ_EDGE_FALL, true, &irq_handler);
+
+  // Enable IRQ for PIN_BTN GPIO. Will use same interrupt handler (irq_handler)
+  gpio_set_irq_enabled(PIN_BTN, GPIO_IRQ_EDGE_FALL, true);
+
+  uint8_t value;
 
   while(true)
   {
@@ -35,8 +39,6 @@ int main()
       printf("Tx message (%d): %s\n", msg, bufferOut);
 
       msg++;
-
-      sleep_ms(1000);
     }
   }
 }
