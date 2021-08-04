@@ -4,19 +4,21 @@
 
 int main()
 {
-  init_spi(); // Initialise SPI and GPIO
+  init_spi(); // Initialise SPI and GPIO pins
 
-  init_nrf24();
+  init_nrf24(); // Initial config when device first powered
 
-  init_nrf24_prx_registers();
+  init_nrf24_prx_registers(); // Config PRX specific registers
 
-  sleep_ms(10000);
+  sleep_ms(10000); // Sleep for 10s to facilitate opening PuTTy to read printf output
 
-  debug_registers();
+  debug_registers(); // printf register values
 
-  set_mode(RX_MODE);
+  set_mode(RX_MODE); // Activate RX_MODE
 
-  gpio_set_irq_enabled_with_callback(PIN_IRQ, GPIO_IRQ_EDGE_FALL, true, &nrf24_irq_handler);
+  // IRQ interrupt handler
+  gpio_set_irq_enabled_with_callback(PIN_IRQ, GPIO_IRQ_EDGE_FALL, true, &irq_handler);
 
-  while (1);
+  // Infinite loop
+  while (true);
 }
