@@ -1,8 +1,9 @@
 #include "NRF24.h"
 
-static char bufferIn[5];
+bool send_msg = false;
 
-uint8_t send_msg = false;
+char bufferIn[5];
+char bufferOut[5];
 
 uint8_t PRX_ADDR_P0[5] = {0x37, 0x37, 0x37, 0x37, 0x37};
 uint8_t PRX_ADDR_P1[5] = {0xC7, 0xC7, 0xC7, 0xC7, 0xC7};
@@ -33,7 +34,7 @@ void init_spi() {
   gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
   gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
 
-  // Initialse CE, CSN & IRQ GPIO
+  // Initialise CE, CSN & IRQ GPIO
   gpio_init(PIN_CE);
   gpio_init(PIN_CSN);
   gpio_init(PIN_IRQ);
@@ -177,7 +178,7 @@ void flush_buffer(uint8_t buffer) {
 }
 
 /**
- * Intial setup of NRF24L01, with power first supplied to 
+ * Initial setup of NRF24L01, with power first supplied to 
  * RPi PICO and the NRF24L01 module.
  * 
  * 1. Wait 100ms for NRF24L01 to enter Power Down mode
@@ -231,26 +232,6 @@ void init_nrf24() {
   /** NRF24L01+ now in Standby-I mode. PWR_UP bit in CONFIG is high & CE pin is low **/
 
   /**
-   * EN_AA register (0x01):
-   * 
-   * Enhanced ShockBurst Auto Acknowledgment setting
-   * on data pipes 0 - 5. 1: enable, 0: disable
-   * 
-   * Mnemonic    | Bit | Set | Comment
-   * (reserved)     7     0    Only '0' allowed
-   * (reserved)     6     0    Only '0' allowed
-   * ENAA_P5        5     1    Enable auto acknowledgement data pipe 5
-   * ENAA_P4        4     1    Enable auto acknowledgement data pipe 4
-   * ENAA_P3        3     1    Enable auto acknowledgement data pipe 3
-   * ENAA_P2        2     1    Enable auto acknowledgement data pipe 2
-   * ENAA_P1        1     1    Enable auto acknowledgement data pipe 1
-   * ENAA_P0        0     1    Enable auto acknowledgement data pipe 0
-   * 
-   * Value written to EN_AA register: 0b00111111
-  **/
-  w_register(EN_AA, 0b00000000); // Disable AA
-
-  /**
    * SETUP_AW register (0x03):
    * 
    * Setup Address Widths for all data pipes
@@ -273,12 +254,12 @@ void init_nrf24() {
    * ARC- 0000: Disabled, 0001: 1 retransmit ... 1111: 15 retransmit
    * 
    * Mnemonic    | Bit |  Set  | Comment
-   * ARD          4:7    0000    Auto Retransmit Delay
-   * ARC          0:3    000     Auto Retransmit Count
+   * ARD          4:7    0100    Auto Retransmit Delay
+   * ARC          0:3    1010    Auto Retransmit Count
    *
-   * Value written to SETUP_RETR register: 0b00000000
+   * Value written to SETUP_RETR register: 0b01001010
   **/
-  w_register(SETUP_RETR, 0b00000000); // Disabled
+  w_register(SETUP_RETR, 0b01001010); // ARC of 10 & ARD of 750µS
 
   /**
    * RF_CH register (0x05):
@@ -335,28 +316,6 @@ void init_nrf24() {
    * 
   **/
   w_register(STATUS, 0b01110000); // Reset RX_DR, TX_DS & MAX_RT
-
-  /**
-   * RX_PW_P0 - RX_PW_P5 registers (0x11 - 0x16):
-   * 
-   * Set the number of bytes in the Rx payload for each data
-   * pipe (0 - 5). Can be 1 - 32 bytes.
-   * 
-   * RX_PW_P0 - P5:- 0: Disabled, 00001: 1 byte... etc.
-   * 
-   * Mnemonic    | Bit |  Set  | Comment
-   * (reserved)    6:7    00     Only '00' allowed
-   * RX_P_NO       0:5  000101   Bytes in in data pipe RX payload 
-   * 
-   * Value written to RX_PW_P0 - RX_PW_P5 register: 0b00000101 (5)
-   * 
-  **/
-  w_register(RX_PW_P0, FIVE_BYTES);
-  w_register(RX_PW_P1, FIVE_BYTES);
-  w_register(RX_PW_P2, FIVE_BYTES);
-  w_register(RX_PW_P3, FIVE_BYTES);
-  w_register(RX_PW_P4, FIVE_BYTES);
-  w_register(RX_PW_P5, FIVE_BYTES);
 }
 
 
@@ -373,6 +332,32 @@ void init_nrf24() {
 void init_nrf24_ptx_registers(uint8_t *address) {
   w_address(RX_ADDR_P0, address, FIVE_BYTES);
   w_address(TX_ADDR, address, FIVE_BYTES);
+
+  /**
+   * EN_AA register (0x01):
+   * 
+   * Enhanced ShockBurst Auto Acknowledgment (AA) setting
+   * on data pipes 0 - 5:- 1: enable, 0: disable
+   * 
+   * NOTE: By default, AA is enabled for all data pipes.
+   * A primary transmitter (PTX) only needs AA enabled
+   * on data pipe 0. Disabling AA on data pipes 1 - 5
+   * isn't necessary, but illustrates how to use and
+   * write to the EN_AA register.
+   * 
+   * Mnemonic    | Bit | Set | Comment
+   * (reserved)     7     0    Only '0' allowed
+   * (reserved)     6     0    Only '0' allowed
+   * ENAA_P5        5     0    Enable auto acknowledgement data pipe 5
+   * ENAA_P4        4     0    Enable auto acknowledgement data pipe 4
+   * ENAA_P3        3     0    Enable auto acknowledgement data pipe 3
+   * ENAA_P2        2     0    Enable auto acknowledgement data pipe 2
+   * ENAA_P1        1     0    Enable auto acknowledgement data pipe 1
+   * ENAA_P0        0     1    Enable auto acknowledgement data pipe 0
+   * 
+   * Value written to EN_AA register: 0b00000001
+  **/
+  w_register(EN_AA, 0b00000001); // Disable AA for all pipes except pipe 0
 }
 
 
@@ -380,9 +365,8 @@ void init_nrf24_ptx_registers(uint8_t *address) {
  * Setup registers relevant to a primary receiver (PRX).
  * 
  * 1. Enable all Rx address for all data pipes
- * 2. Set unique Rx address for all data pipes
- * 
- * @param address PRX_ADDR_P0 - PRX_ADDR_P5
+ * 2. Set Rx payload width for all data pipes
+ * 3. Set unique Rx address for all data pipes
  */
 void init_nrf24_prx_registers() {
   /**
@@ -406,6 +390,28 @@ void init_nrf24_prx_registers() {
   w_register(EN_RXADDR, 0b00111111); // All Rx addresses enabled
 
   /**
+   * RX_PW_P0 - RX_PW_P5 registers (0x11 - 0x16):
+   * 
+   * Set the number of bytes in the Rx payload for each data
+   * pipe (0 - 5). Can be 1 - 32 bytes.
+   * 
+   * RX_PW_P0 - P5:- 0: Disabled, 00001: 1 byte... etc.
+   * 
+   * Mnemonic    | Bit |  Set  | Comment
+   * (reserved)    6:7    00     Only '00' allowed
+   * RX_P_NO       0:5  000101   Bytes in in data pipe RX payload 
+   * 
+   * Value written to RX_PW_P0 - RX_PW_P5 register: 0b00000101 (5)
+   * 
+  **/
+  w_register(RX_PW_P0, FIVE_BYTES);
+  w_register(RX_PW_P1, FIVE_BYTES);
+  w_register(RX_PW_P2, FIVE_BYTES);
+  w_register(RX_PW_P3, FIVE_BYTES);
+  w_register(RX_PW_P4, FIVE_BYTES);
+  w_register(RX_PW_P5, FIVE_BYTES);
+
+  /**
    * A primary receiver (PRX) can receive data from
    * six primary transmitters (PTX), one per data pipe.
    * Each data pipe has a unique address.
@@ -426,6 +432,27 @@ void init_nrf24_prx_registers() {
   w_address(RX_ADDR_P3, &PRX_ADDR_P3[LSB], ONE_BYTE);
   w_address(RX_ADDR_P4, &PRX_ADDR_P4[LSB], ONE_BYTE);
   w_address(RX_ADDR_P5, &PRX_ADDR_P5[LSB], ONE_BYTE);
+
+
+    /**
+   * EN_AA register (0x01):
+   * 
+   * Enhanced ShockBurst Auto Acknowledgment (AA) setting
+   * on data pipes 0 - 5:- 1: enable, 0: disable
+   * 
+   * Mnemonic    | Bit | Set | Comment
+   * (reserved)     7     0    Only '0' allowed
+   * (reserved)     6     0    Only '0' allowed
+   * ENAA_P5        5     1    Enable auto acknowledgement data pipe 5
+   * ENAA_P4        4     1    Enable auto acknowledgement data pipe 4
+   * ENAA_P3        3     1    Enable auto acknowledgement data pipe 3
+   * ENAA_P2        2     1    Enable auto acknowledgement data pipe 2
+   * ENAA_P1        1     1    Enable auto acknowledgement data pipe 1
+   * ENAA_P0        0     1    Enable auto acknowledgement data pipe 0
+   * 
+   * Value written to EN_AA register: 0b00111111
+  **/
+  w_register(EN_AA, 0b00111111); // Enable AA for all data pipes
 }
 
 /**
@@ -518,11 +545,12 @@ void set_mode(uint8_t mode) {
 }
 
 void tx_message(char *msg) {
-  flush_buffer(FLUSH_TX);
+  // flush_buffer(FLUSH_TX);
   uint8_t cmd;
   uint8_t value;
 
   cmd = W_TX_PAYLOAD;
+  
   csn_put(LOW);
   spi_write_blocking(SPI_PORT, &cmd, ONE_BYTE);
   spi_write_blocking(SPI_PORT, (uint8_t*)msg, FIVE_BYTES);
@@ -531,8 +559,6 @@ void tx_message(char *msg) {
   ce_put(HIGH);
   sleep_us(300);
   ce_put(LOW);
-
-  w_register(STATUS, 0b00101110);
 }
 
 void rx_message(char *msg) {
@@ -543,25 +569,7 @@ void rx_message(char *msg) {
   csn_put(HIGH);
 }
 
-uint8_t is_message() {
-  uint8_t status;
-  uint8_t value;
-
-  sleep_us(10);
-  csn_put(LOW);
-  uint8_t reg = (REGISTER_MASK & FIFO_STATUS);
-  spi_write_blocking(SPI_PORT, &reg, ONE_BYTE);
-  spi_read_blocking(SPI_PORT, NOP, &status, ONE_BYTE);
-  csn_put(HIGH);
-  
-  return !(FIFO_MASK & status);
-}
-
-void button_irq_handler() {
-  send_msg = true;
-}
-
-void nrf24_irq_handler() {
+void irq_handler(uint gpio) {
   // Value of STATUS/FIFO_STATUS register
   uint8_t status, fifo_status;
 
@@ -570,6 +578,11 @@ void nrf24_irq_handler() {
   
   // Value of FIFO_STATUS RX FIFO empty flag
   uint8_t rx_empty;
+
+  // PIN_BTN used to Tx message
+  if (gpio == PIN_BTN) {
+    send_msg = true;
+  }
 
   // Value of the STATUS register
   status = r_register(STATUS);
@@ -590,7 +603,7 @@ void nrf24_irq_handler() {
     while (!rx_empty)
     {
       rx_message(bufferIn);
-      printf("Message: %s\n", bufferIn);
+      printf("Rx message: %s\n", bufferIn);
 
       fifo_status = r_register(FIFO_STATUS); // Read value of STATUS register again
       rx_empty = (fifo_status >> RX_EMPTY) & 1; // Check if RX FIFO is now empty (1) or not (0)
@@ -601,7 +614,7 @@ void nrf24_irq_handler() {
 
   if (tx_ds)
   {
-     printf("Ack received from PRX");
+    printf("Auto-acknowledge received from PRX\n");
 
     // Reset TX_DS (bit 5) in STATUS register by writing 1
     w_register(STATUS, (1 << TX_DS));
@@ -609,7 +622,7 @@ void nrf24_irq_handler() {
 
   if (max_rt)
   {
-    printf("Max retries without PRX ack reached");
+    printf("Maximum number of Tx retransmits reached");
 
     // Reset MAX_RT (bit 4) in STATUS register by writing 1
     w_register(STATUS, (1 << MAX_RT));
@@ -631,6 +644,9 @@ void debug_registers() {
 
   value = r_register(RF_SETUP);
   printf("RF_SETUP: 0x%X\n", value);
+
+  value = r_register(EN_AA);
+  printf("EN_AA: 0x%X\n", value);
 
   r_register_all(RX_ADDR_P0, buf, 5);
   printf("RX_ADDR_P0: 0x%X 0x%X 0x%X 0x%X 0x%X\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
