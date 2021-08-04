@@ -15,10 +15,18 @@
 #define THREE_BYTES 3
 #define FIVE_BYTES  5
 
+#define ADDR_WIDTH    0x03
+#define PAYLOAD_WIDTH 5
+
+#define LSB 0
+
 #define RX_MODE 1
 #define TX_MODE 0
 
-extern uint8_t send_msg;
+extern bool send_msg;
+
+extern char bufferIn[5];
+extern char bufferOut[5];
 
 extern uint8_t PRX_ADDR_P0[5];
 extern uint8_t PRX_ADDR_P1[5];
@@ -27,11 +35,7 @@ extern uint8_t PRX_ADDR_P3[5];
 extern uint8_t PRX_ADDR_P4[5];
 extern uint8_t PRX_ADDR_P5[5];
 
-#define ADDR_WIDTH 0x03
 
-#define PAYLOAD_WIDTH 5
-
-#define LSB 0
 
 // Initialise SPI and GPIO pins
 void init_spi();
@@ -60,7 +64,7 @@ void flush_buffer(uint8_t buffer);
 // Initial config when device first powered
 void init_nrf24();
 
-// Config PTx specific registers
+// Config PTX specific registers
 void init_nrf24_ptx_registers();
 
 // Config PRx specific registers
@@ -79,10 +83,7 @@ void rx_message(char *msg);
 uint8_t is_message();
 
 // IRQ interrupt handler
-void nrf24_irq_handler();
-
-// Push button IRQ handler
-void button_irq_handler();
+void irq_handler();
 
 // printf register values
 void debug_registers();
