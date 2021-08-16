@@ -1,6 +1,19 @@
 #ifndef NRF24L01
 #define NRF24L01
 
+/**
+ * Nordic Semiconductor NRF24L01+
+ * 
+ * The nRF24L01+ is a single chip 2.4GHz transceiver with an embedded baseband protocol
+ * engine (Enhanced ShockBurst™), suitable for ultra low power wireless applications.
+ * The nRF24L01+ is designed for operation in the world wide ISM frequency band at 
+ * 2.400 - 2.4835GHz.  
+ * 
+ * Header file contains the full register map for the NRF24L01 and defines specific
+ * register bit mnemonics that are useful for interfacing with the NRF24L01 over SPI.
+ */
+
+
 // SPI commands [8.3.1 in Datasheet]
 #define R_REGISTER    0x00 // Read register [000] + [5 bit register address]
 #define W_REGISTER    0x20 // Write register [001] + [5 bit register address]
