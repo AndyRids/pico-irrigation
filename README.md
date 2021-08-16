@@ -4,4 +4,10 @@ A work in progress for an automated irrigation system. I wanted to learn C and t
 
 The long-term plan is to have a Pico with an NRF24 acting as the primary receiver (PRX), which will operate a motorized ball valve, on instruction, from up to 6 Picos with an NRF24 and each operating a soil moisture sensor. I will be attempting to have the soil moisture sensor and NRF24L01 operating on separate cores.
 
-I'm using the Waveshare NRF24L01 modules as these are less expensive than the Sparkfun NRF24 modules, but are guaranteed to work better than the cheaper, often inferior ones on Ebay etc. I'm also using the Cytron Maker Pi Pico boards for prototyping and development. The GPIO LED indicators are especially useful for visually identifying issues with the IRQ pin code and with the CE pin, in RX MODE. I use one of the three programmable push buttons to Tx a message.
+Hardware used; RPi Pico x 2, Waveshare NRF24L01 RF Board (B) x 2, DFRobot Analog Waterproof Capacitive Soil Moisture Sensor x 1, Cytron Maker Pi Pico (prototyping & testing) x 2, U.S. Solid Motorized Ball Valve 1/2" (9-24V AC/DC and 2 Wire Auto Return) x 1
+
+Hardware note: Could use a cheaper capacitive moisture sensor and a solenoid valve in place of the motorized ball valve.
+
+Update 16 Aug: Added code for reading soil moisture from DFRobot sensor and added code for the PRX to switch on the motorized ball valve if moisture is less than 60%. valve is activated using the second RPi pico core and a 10 second alarm.
+
+TODO: More testing regarding the use of core1 and alarm feature. Need to solder a prototype to test PRX and motor activation. Looking to include circuit diagram for PRX board and PTX board.
