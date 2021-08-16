@@ -9,8 +9,6 @@ project(sensor C CXX ASM)
 
 pico_sdk_init()
 
-# include_directories(inc)
-
 add_subdirectory(inc)
-add_subdirectory(rx)
-add_subdirectory(tx)
+add_subdirectory(prx)
+add_subdirectory(ptx_1)
