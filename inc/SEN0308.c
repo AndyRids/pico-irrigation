@@ -83,13 +83,13 @@ uint8_t read_moisture() {
     // Turn off DFRobot sensor
     gpio_put(PIN_DFR, LOW);
 
-    // Calculate sum of the 4 ADC readings
+    // Calculate sum of the 5 ADC readings
     for (size_t i = 0; i < 5; i++)
     {
       sum += buffer[i];
     }
 
-    // Calculate average percantage
+    // Calculate average percentage
     percentage = roundf(sum / 5);
 
     // Return percentage value
