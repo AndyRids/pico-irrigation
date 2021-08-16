@@ -1,10 +1,20 @@
 #include "NRF24.h"
 
-bool send_msg = false;
+volatile bool send_msg = false; // Tx message flag
+volatile bool motor_on = false;
+volatile bool timer_end = false;
 
-char bufferIn[5];
-char bufferOut[5];
+char bufferIn[9]; // Store data for Rx
+char bufferOut[9]; // Store data for Tx
 
+static char delimiter[1] = {" "}; // Delimiter in PTX message 
+
+static char ptx_id[5]; // ID of PTX, 'PTX-1' to 'PTX-6'
+
+static uint8_t moisture; // Soil moisture percentage
+
+
+// Addresses for the 6 data pipes on the PRX device
 uint8_t PRX_ADDR_P0[5] = {0x37, 0x37, 0x37, 0x37, 0x37};
 uint8_t PRX_ADDR_P1[5] = {0xC7, 0xC7, 0xC7, 0xC7, 0xC7};
 uint8_t PRX_ADDR_P2[5] = {0xC3, 0xC7, 0xC7, 0xC7, 0xC7};
@@ -404,12 +414,12 @@ void init_nrf24_prx_registers() {
    * Value written to RX_PW_P0 - RX_PW_P5 register: 0b00000101 (5)
    * 
   **/
-  w_register(RX_PW_P0, FIVE_BYTES);
-  w_register(RX_PW_P1, FIVE_BYTES);
-  w_register(RX_PW_P2, FIVE_BYTES);
-  w_register(RX_PW_P3, FIVE_BYTES);
-  w_register(RX_PW_P4, FIVE_BYTES);
-  w_register(RX_PW_P5, FIVE_BYTES);
+  w_register(RX_PW_P0, PAYLOAD_WIDTH);
+  w_register(RX_PW_P1, PAYLOAD_WIDTH);
+  w_register(RX_PW_P2, PAYLOAD_WIDTH);
+  w_register(RX_PW_P3, PAYLOAD_WIDTH);
+  w_register(RX_PW_P4, PAYLOAD_WIDTH);
+  w_register(RX_PW_P5, PAYLOAD_WIDTH);
 
   /**
    * A primary receiver (PRX) can receive data from
@@ -544,16 +554,26 @@ void set_mode(uint8_t mode) {
 
 }
 
-void tx_message(char *msg) {
-  // flush_buffer(FLUSH_TX);
-  uint8_t cmd;
-  uint8_t value;
 
+/**
+ * Write data over SPI for NR424L01 to Tx.
+ * 
+ * 1. Write W_TX_PAYLOAD instruction
+ * 2. Write data contained in bufferOut (msg)
+ * 3. Drive CE pin HIGH to Tx data
+ * 4. Drive CE pin LOW 
+ * 
+ * @param msg bufferOut[9]
+ */
+void tx_message(char *msg) {
+  uint8_t cmd;
+
+  // W_TX_PAYLOAD instruction
   cmd = W_TX_PAYLOAD;
   
   csn_put(LOW);
   spi_write_blocking(SPI_PORT, &cmd, ONE_BYTE);
-  spi_write_blocking(SPI_PORT, (uint8_t*)msg, FIVE_BYTES);
+  spi_write_blocking(SPI_PORT, (uint8_t*)msg, PAYLOAD_WIDTH);
   csn_put(HIGH);
 
   ce_put(HIGH);
@@ -561,16 +581,25 @@ void tx_message(char *msg) {
   ce_put(LOW);
 }
 
+
+/**
+ * Read Rx data over SPI from NR424L01.
+ * 
+ * 1. Write R_RX_PAYLOAD instruction
+ * 2. Read data into bufferIn (msg)
+ * 
+ * @param msg bufferIn[9]
+ */
 void rx_message(char *msg) {
   csn_put(LOW);
   uint8_t cmd = R_RX_PAYLOAD;
   spi_write_blocking(SPI_PORT, &cmd, ONE_BYTE);
-  spi_read_blocking(SPI_PORT, NOP, (uint8_t*)msg, FIVE_BYTES);
+  spi_read_blocking(SPI_PORT, NOP, (uint8_t*)msg, PAYLOAD_WIDTH);
   csn_put(HIGH);
 }
 
-void irq_handler(uint gpio) {
-  // Value of STATUS/FIFO_STATUS register
+void gpio_irq_handler(uint gpio) {
+  // Value of STATUS & FIFO_STATUS register
   uint8_t status, fifo_status;
 
   // Value of STATUS register interrupt bits 
@@ -598,20 +627,66 @@ void irq_handler(uint gpio) {
   // Test if RX FIFO is empty (1) or not (0)
   rx_empty = (fifo_status >> RX_EMPTY) & 1;
 
+  // If packet received
   if (rx_dr)
   {
+    // While RX FIFO is not empty
     while (!rx_empty)
     {
+      // Read the packet into bufferIn[9]
       rx_message(bufferIn);
+
+      // printf bufferIn[9] value for debugging
       printf("Rx message: %s\n", bufferIn);
+
+
+      /**
+       * The packet will always contain the PTX ID followed
+       * by the moisture value. A space delimiter is used.
+       * 
+       * e.g. "PTX-1 50"
+       * 
+       * ptr will now point to "PTX-1"
+       */ 
+      char *ptr = strtok(bufferIn, delimiter);
+
+      // Put ptr value ("PTX-1") into ptx_id[5]
+      sprintf(ptx_id, ptr);
+
+      // ptr now points to moisture value
+      ptr = strtok(NULL, delimiter);
+
+      char *ptr_2;
+
+      // moisture is now ptr value converted to int
+      moisture = strtol(ptr, &ptr_2, 10);
+
+      // printf ptx_id & moisture for debugging
+      printf("ID: %s, Moisture: %d\n", ptx_id, moisture);
+
+      // If moisture is less than 60%
+      if (moisture < 60)
+      {
+        printf("Moisture less than 60%%\n");
+
+        // If ball valve not (already) active
+        if (!motor_on)
+        {
+          // Send 10000 (ms) to core1 FIFO
+          multicore_fifo_push_blocking(10000);
+        }
+        
+      }
 
       fifo_status = r_register(FIFO_STATUS); // Read value of STATUS register again
       rx_empty = (fifo_status >> RX_EMPTY) & 1; // Check if RX FIFO is now empty (1) or not (0)
     }
+
     // Reset RX_DR (bit 6) in STATUS register by writing 1
     w_register(STATUS, (1 << RX_DR));
   }
 
+  // Auto-acknowledge received from PRX
   if (tx_ds)
   {
     printf("Auto-acknowledge received from PRX\n");
@@ -620,15 +695,18 @@ void irq_handler(uint gpio) {
     w_register(STATUS, (1 << TX_DS));
   }
 
+  // Maximum Tx retries without acknowledgement
   if (max_rt)
   {
-    printf("Maximum number of Tx retransmits reached");
+    printf("Maximum Tx retransmits reached\n");
 
     // Reset MAX_RT (bit 4) in STATUS register by writing 1
     w_register(STATUS, (1 << MAX_RT));
   }
 }
 
+
+// Print register values for debugging
 void debug_registers() {
   uint8_t value;
   uint8_t buf[5];
