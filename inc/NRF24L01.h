@@ -60,6 +60,7 @@
 // Bitwise masks
 #define REGISTER_MASK 0x1F // 0b00011111
 #define FIFO_MASK     0x01 // 0b00000001
+#define PIPE_MASK     0x07 // 0b00000111
 
 /**
  * CONFIG register PWR_UP & PRIM_RX:
@@ -102,5 +103,16 @@
  * there is data in the RX FIFO.
 **/
 #define RX_EMPTY 0 // Bit 0
+
+
+#define EN_AA_ALL 0x3F // Enable Auto-Ack on all data pipes
+#define EN_AA_NONE 0x00 // Disable Auto-Ack on all data pipes
+
+#define ENAA_P5 5 // Bit 5
+#define ENAA_P4 4 // Bit 4
+#define ENAA_P3 3 // Bit 3
+#define ENAA_P2 2 // Bit 2
+#define ENAA_P1 1 // Bit 1
+#define ENAA_P0 0 // Bit 0
 
 #endif

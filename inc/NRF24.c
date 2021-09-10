@@ -1,18 +1,14 @@
 #include "NRF24.h"
 
-volatile bool send_msg = false; // Tx message flag
-volatile bool motor_on = false;
-volatile bool timer_end = false;
+// LSB in 5 byte address array (PRX_ADDR_P0[LSB])
+static const uint8_t LSB = 0; 
 
-char bufferIn[9]; // Store data for Rx
-char bufferOut[9]; // Store data for Tx
-
-static char delimiter[1] = {" "}; // Delimiter in PTX message 
-
-static char ptx_id[5]; // ID of PTX, 'PTX-1' to 'PTX-6'
-
-static uint8_t moisture; // Soil moisture percentage
-
+// Bytes in data buffer for read/write over SPI
+static const size_t ONE_BYTE = 1;
+static const size_t TWO_BYTES = 2;
+static const size_t THREE_BYTES = 3; 
+static const size_t FOUR_BYTES = 4;
+static const size_t FIVE_BYTES = 5;
 
 // Addresses for the 6 data pipes on the PRX device
 uint8_t PRX_ADDR_P0[5] = {0x37, 0x37, 0x37, 0x37, 0x37};
@@ -34,10 +30,10 @@ uint8_t PRX_ADDR_P5[5] = {0xC6, 0xC7, 0xC7, 0xC7, 0xC7};
  * NOTE: IRQ pin on NRF24L01 is active-low. It is HIGH, before
  * being driven LOW on events such as Rx data or Tx data.
  */
-void init_spi() {
+void init_spi(void) {
   stdio_init_all(); // Initialise I/O for USB serial
 
-  spi_init(SPI_PORT, 5000000); // Initialise SPI0 at 5MHz
+  spi_init(SPI_PORT, 6000000); // Initialise SPI0 at 6MHz
 
   // Set GPIO function as SPI for SCK, MOSI & MISO
   gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
@@ -93,11 +89,13 @@ void ce_put(uint8_t value) {
  * @param buffer Data
  */
 void w_register(uint8_t reg, uint8_t buffer) {
-  csn_put(LOW);
   reg = W_REGISTER | (REGISTER_MASK & reg);
+  csn_put(LOW);
   spi_write_blocking(SPI_PORT, &reg, ONE_BYTE);
   spi_write_blocking(SPI_PORT, &buffer, ONE_BYTE);
   csn_put(HIGH);
+
+  return;
 }
 
 /**
@@ -120,6 +118,8 @@ void w_address(uint8_t reg, uint8_t *buffer, uint8_t bytes) {
   spi_write_blocking(SPI_PORT, &reg, ONE_BYTE);
   spi_write_blocking(SPI_PORT, buffer, bytes);
   csn_put(HIGH);
+
+  return;
 }
 
 /**
@@ -139,13 +139,17 @@ void w_address(uint8_t reg, uint8_t *buffer, uint8_t bytes) {
  * @return One byte of data read 
  */
 uint8_t r_register(uint8_t reg) {
-  uint8_t buffer;
+  // Byte of data read from register
+  uint8_t buffer = 0;
+
   reg = (REGISTER_MASK & reg);
+
   csn_put(LOW);
   spi_write_blocking(SPI_PORT, &reg, ONE_BYTE);
   spi_read_blocking(SPI_PORT, NOP, &buffer, ONE_BYTE);
   csn_put(HIGH);
 
+  // Return byte read from register
   return buffer;
 }
 
@@ -164,18 +168,22 @@ uint8_t r_register(uint8_t reg) {
  * @param bytes Number of bytes to read
  */
 void r_register_all(uint8_t reg, uint8_t *buffer, uint8_t bytes) {
+
   reg = (REGISTER_MASK & reg);
+
   csn_put(LOW);
   spi_write_blocking(SPI_PORT, &reg, ONE_BYTE);
   spi_read_blocking(SPI_PORT, NOP, buffer, bytes);
   csn_put(HIGH);
+
+  return;
 }
 
 /**
  * Drive CSN LOW, write FLUSH_TX or FLUSH_RX
  * instruction over SPI and drive CSN HIGH.
  * 
- * Flushes Tx or Rx FIFO.
+ * Flushes TX or RX FIFO.
  * 
  * @param buffer FLUSH_TX or FLUSH_RX
  */
@@ -185,6 +193,8 @@ void flush_buffer(uint8_t buffer) {
   csn_put(LOW);
   spi_write_blocking(SPI_PORT, &buffer, ONE_BYTE);
   csn_put(HIGH);
+
+  return;
 }
 
 /**
@@ -210,7 +220,7 @@ void flush_buffer(uint8_t buffer) {
  * register needs to be set with one of the addresses stored inside 
  * the PRX RX_ADDR_P0 - RX_ADDR_P5 registers.
  */
-void init_nrf24() {
+void init_nrf24(void) {
   /** With a VDD of 1.9V or higher, nRF24L01+ enters the Power on reset state **/
 
   sleep_ms(100); // nRF24L01+ enters Power Down mode after 100ms
@@ -253,7 +263,7 @@ void init_nrf24() {
    *
    * Value written to SETUP_AW register: 0b00000011
   **/
-  w_register(SETUP_AW, ADDR_WIDTH);
+  w_register(SETUP_AW, 0b00000011);
 
   /**
    * SETUP_RETR register (0x04):
@@ -279,7 +289,6 @@ void init_nrf24() {
    * Mnemonic    | Bit |   Set   | Comment
    * (reserved)     7      0       Only '0' allowed
    * RF_CH        0:6   1001100    Channel 2 - 127
-   * 
    * 
    * Value written to RF_CH register: 0b01001100 (76)
   **/
@@ -340,8 +349,8 @@ void init_nrf24() {
  * @param address PRX_ADDR_P0 - PRX_ADDR_P5
  */
 void init_nrf24_ptx_registers(uint8_t *address) {
-  w_address(RX_ADDR_P0, address, FIVE_BYTES);
-  w_address(TX_ADDR, address, FIVE_BYTES);
+  w_address(RX_ADDR_P0, (uint8_t*)address, FIVE_BYTES);
+  w_address(TX_ADDR, (uint8_t*)address, FIVE_BYTES);
 
   /**
    * EN_AA register (0x01):
@@ -378,7 +387,8 @@ void init_nrf24_ptx_registers(uint8_t *address) {
  * 2. Set Rx payload width for all data pipes
  * 3. Set unique Rx address for all data pipes
  */
-void init_nrf24_prx_registers() {
+void init_nrf24_prx_registers(void) {
+
   /**
    * EN_RXADDR register (0x02):
    * 
@@ -414,12 +424,12 @@ void init_nrf24_prx_registers() {
    * Value written to RX_PW_P0 - RX_PW_P5 register: 0b00000101 (5)
    * 
   **/
-  w_register(RX_PW_P0, PAYLOAD_WIDTH);
-  w_register(RX_PW_P1, PAYLOAD_WIDTH);
-  w_register(RX_PW_P2, PAYLOAD_WIDTH);
-  w_register(RX_PW_P3, PAYLOAD_WIDTH);
-  w_register(RX_PW_P4, PAYLOAD_WIDTH);
-  w_register(RX_PW_P5, PAYLOAD_WIDTH);
+  w_register(RX_PW_P0, THREE_BYTES);
+  w_register(RX_PW_P1, THREE_BYTES);
+  w_register(RX_PW_P2, THREE_BYTES);
+  w_register(RX_PW_P3, THREE_BYTES);
+  w_register(RX_PW_P4, THREE_BYTES);
+  w_register(RX_PW_P5, THREE_BYTES);
 
   /**
    * A primary receiver (PRX) can receive data from
@@ -431,20 +441,19 @@ void init_nrf24_prx_registers() {
    * set using the SETUP_AW register (0x03). This project
    * uses a five byte address width.
    * 
-   * 2. RX_ADDR_P2 - RX_ADDR_P3 automatically share bits
+   * 2. RX_ADDR_P2 - RX_ADDR_P5 automatically share bits
    * 8 - 39 MSB of RX_ADDR_P1 and are simply set with a 
    * unique 1 byte value (LSB), which would act as bits 
    * 0 - 7 of the full 40 bit address.
   **/
-  w_address(RX_ADDR_P0, PRX_ADDR_P0, FIVE_BYTES);
-  w_address(RX_ADDR_P1, PRX_ADDR_P1, FIVE_BYTES);
-  w_address(RX_ADDR_P2, &PRX_ADDR_P2[LSB], ONE_BYTE);
-  w_address(RX_ADDR_P3, &PRX_ADDR_P3[LSB], ONE_BYTE);
-  w_address(RX_ADDR_P4, &PRX_ADDR_P4[LSB], ONE_BYTE);
-  w_address(RX_ADDR_P5, &PRX_ADDR_P5[LSB], ONE_BYTE);
+ w_address(RX_ADDR_P0, PRX_ADDR_P0, FIVE_BYTES);
+ w_address(RX_ADDR_P1, PRX_ADDR_P1, FIVE_BYTES);
+ w_address(RX_ADDR_P2, &PRX_ADDR_P2[LSB], ONE_BYTE);
+ w_address(RX_ADDR_P3, &PRX_ADDR_P3[LSB], ONE_BYTE);
+ w_address(RX_ADDR_P4, &PRX_ADDR_P4[LSB], ONE_BYTE);
+ w_address(RX_ADDR_P5, &PRX_ADDR_P5[LSB], ONE_BYTE);
 
-
-    /**
+  /**
    * EN_AA register (0x01):
    * 
    * Enhanced ShockBurst Auto Acknowledgment (AA) setting
@@ -463,6 +472,35 @@ void init_nrf24_prx_registers() {
    * Value written to EN_AA register: 0b00111111
   **/
   w_register(EN_AA, 0b00111111); // Enable AA for all data pipes
+
+  return;
+}
+
+
+/**
+ * Enables Enhanced ShockBurst™ auto acknowledgment (AA) 
+ * function on the specified data pipes.
+ * 
+ * To enable AA on all data pipes, use EN_AA_ALL (0b00111111).
+ * 
+ * To disable AA, use EN_AA_NONE (0b00000000).
+ * 
+ * To enable AA on a specific pipe use ENAA_P0 - ENAA_P5. For
+ * example, (1 << ENAA_P0) would enable AA on data pipe zero.
+ * 
+ * To enable AA on a range of pipes use ENAA_P0 - ENAA_P5. For 
+ * example ((1 << ENAA_P0) | (1 << ENAA_P1) | (1 << ENAA_P1))
+ * would enable AA on data pipes; zero, one, two and three.
+ * 
+ * en_auto_acknowledge(EN_AA_ALL);
+ * en_auto_acknowledge(EN_AA_NONE);
+ * en_auto_acknowledge(1 << ENAA_P0);
+ * en_auto_acknowledge((1 << ENAA_P0) | (1 << ENAA_P1));
+ * 
+ * @param data_pipes EN_AA_ALL, EN_AA_NONE, (1 << ENAA_P0) | (1 << ENAA_P1)
+ */
+void en_auto_acknowledge(uint8_t data_pipes) {
+  w_register(EN_AA, data_pipes);
 }
 
 /**
@@ -470,7 +508,7 @@ void init_nrf24_prx_registers() {
  * steps for Tx mode.
  * 
  * 1. Read CONFIG register into value and the current value
- * of PRIM_RX bit of CONFIG register into bit.
+ * of PRIM_RX bit of CONFIG register into prim_rx.
  * 
  * NOTE: State diagram in the datasheet (6.1.1) highlights
  * conditions for entering Rx and Tx operating modes. One 
@@ -481,12 +519,12 @@ void init_nrf24_prx_registers() {
  * 
  * 2. If chosen mode is RX_MODE, value is modifed to set 
  * PRIM_RX (if not already) and is written to the CONFIG 
- * register. The Rx FIFO is flushed, CE pin is driven HIGH 
+ * register. The RX FIFO is flushed, CE pin is driven HIGH 
  * and sleep timer for 130us as NRF24L01 enters Rx Mode.
  * 
  * 3. If chosen mode is TX_MODE, then value is modified to 
- * unset PRIM_RX (if not already) and is written to the 
- * CONFIG register. The Tx FIFO is then flushed.
+ * reset PRIM_RX (if not already) and is written to the 
+ * CONFIG register. The TX FIFO is then flushed.
  * 
  * NOTE: State diagram indicates that the conditions for
  * Tx mode are; TX FIFO not empty, PRIM_RX = 0 and CE pin
@@ -503,55 +541,59 @@ void init_nrf24_prx_registers() {
  * 
  * @param mode RX_MODE (1) or TX_MODE (0)
  */
-void set_mode(uint8_t mode) {
-  uint8_t value; // value of CONFIG register
-  uint8_t bit; // value of PRIM_RX in CONFIG register
+void set_mode(xcvr_mode_t transceiver_mode) {
+  uint8_t value = 0; 
+  uint8_t prim_rx = (value >> PRIM_RX) & 1; // value of PRIM_RX in CONFIG register
 
-  value = r_register(CONFIG);
-  bit = (value >> PRIM_RX) & 1;
+  value = r_register(CONFIG); // value of CONFIG register
 
-  if (mode == RX_MODE) {
+  switch (transceiver_mode)
+  {
+    case RX_MODE:
+      // if not already in RX_MODE
+      if (prim_rx != RX_MODE)
+      {
+        value |= (1 << PRIM_RX); // Set PRIM_RX bit
+        w_register(CONFIG, value); // Write new value to CONFIG register
+      }
 
-    if (bit != RX_MODE) {
-      // Set PRIM_RX bit
-      value |= (1 << PRIM_RX);
+      flush_buffer(FLUSH_RX); // Flush RX FIFO
 
-      // Write modified value to CONFIG register
-      w_register(CONFIG, value);
-    }
+      /** NRF24L01+ still in Standby-I mode. PWR_UP bit in CONFIG is set & CE pin is LOW **/
+      
+      // Drive CE HIGH
+      ce_put(HIGH);
+
+      // NRF24L01+ enters Rx Mode after 130us
+      sleep_us(130);
+
+      /** NRF24L01+ now in Rx Mode. PRIM_RX bit in CONFIG is set (1) & CE pin is HIGH **/
+
+    break;
     
-    flush_buffer(FLUSH_RX); // Flush Rx FIFO
+    case TX_MODE:
+      // Drive CE LOW
+      ce_put(LOW);
 
-    /** NRF24L01+ still in Standby-I mode. PWR_UP bit in CONFIG is HIGH & CE pin is LOW **/
-    
-    // Drive CE HIGH
-    ce_put(HIGH);
+      /** NRF24L01+ now in Standby-I mode. PWR_UP bit in CONFIG is set (1) & CE pin is LOW **/
 
-    // nRF24L01+ enters Rx Mode after 130us
-    sleep_us(130);
+      // if not already in TX_MODE
+      if (prim_rx != TX_MODE)
+      {
+        value &= ~(1 << PRIM_RX); // reset PRIM_RX bit
+        w_register(CONFIG, value); // Write new value to CONFIG register
+      }
 
-    /** NRF24L01+ now in Rx Mode. PRIM_RX bit in CONFIG is set (1) & CE pin is HIGH **/
+      flush_buffer(FLUSH_TX); // Flush TX FIFO
+
+      /** NRF24L01+ enters Tx mode when TX FIFO is not empty, PRIM_RX = 0 & CE pin is HIGH for 10µs+ **/
+
+    break;
+
+    default:
+      // TODO: error handling
+    break;
   }
-
-  if (mode == TX_MODE) {
-    // Drive CE LOW
-    ce_put(LOW);
-
-    /** NRF24L01+ now in Standby-I mode. PWR_UP bit in CONFIG is set (1) & CE pin is LOW **/
-
-    // If PRIM_RX (bit 0) is not already unset (0), reset it
-    if (bit != TX_MODE) {
-      value &= ~(1 << PRIM_RX);
-
-      // Write modified value to CONFIG register
-      w_register(CONFIG, value);
-    }
-    
-    flush_buffer(FLUSH_TX); // Flush Tx FIFO
-
-    /** NRF24L01+ enters Tx mode when Tx FIFO is not empty, PRIM_RX = 0 & CE pin is HIGH for 10µs+ **/
-  }
-
 }
 
 
@@ -559,26 +601,32 @@ void set_mode(uint8_t mode) {
  * Write data over SPI for NR424L01 to Tx.
  * 
  * 1. Write W_TX_PAYLOAD instruction
- * 2. Write data contained in bufferOut (msg)
+ * 2. Write data contained in payload
  * 3. Drive CE pin HIGH to Tx data
  * 4. Drive CE pin LOW 
  * 
- * @param msg bufferOut[9]
+ * @param msg 
  */
-void tx_message(char *msg) {
-  uint8_t cmd;
-
+void tx_message(payload_t* msg) {
   // W_TX_PAYLOAD instruction
-  cmd = W_TX_PAYLOAD;
-  
+  uint8_t cmd = W_TX_PAYLOAD;
+
+  // Union allows access to payload_t data as an array
+  spi_payload_t message;
+
+  // Store payload_t msg data in payload_t payload in spi_payload_t message union
+  message.payload = (*msg);
+ 
   csn_put(LOW);
   spi_write_blocking(SPI_PORT, &cmd, ONE_BYTE);
-  spi_write_blocking(SPI_PORT, (uint8_t*)msg, PAYLOAD_WIDTH);
+  spi_write_blocking(SPI_PORT, message.buffer, sizeof(message));
   csn_put(HIGH);
 
   ce_put(HIGH);
-  sleep_us(300);
+  sleep_us(100);
   ce_put(LOW);
+
+  return;
 }
 
 
@@ -588,129 +636,74 @@ void tx_message(char *msg) {
  * 1. Write R_RX_PAYLOAD instruction
  * 2. Read data into bufferIn (msg)
  * 
- * @param msg bufferIn[9]
+ * @param msg
  */
-void rx_message(char *msg) {
+void rx_message(payload_prx_t* msg) {
+  // Union allows access to payload_t data as an array
+  spi_payload_t message;
+
+  // Must read STATUS before reading payload from RX FIFO
+  uint8_t status = r_register(STATUS);
+
   csn_put(LOW);
+  // R_RX_PAYLOAD instruction
   uint8_t cmd = R_RX_PAYLOAD;
   spi_write_blocking(SPI_PORT, &cmd, ONE_BYTE);
-  spi_read_blocking(SPI_PORT, NOP, (uint8_t*)msg, PAYLOAD_WIDTH);
+  spi_read_blocking(SPI_PORT, NOP, message.buffer, sizeof(message));
   csn_put(HIGH);
+
+  // Store ptx_id and moisture from PTX payload in payload_prx_t* msg
+  (*msg).ptx_id = message.payload.ptx_id;
+  (*msg).moisture = message.payload.moisture;
+
+  // Store data pipe number (STATUS register bit 1:3) in payload_prx_t* msg
+  (*msg).data_pipe = (status >> 1) & PIPE_MASK;
+
+  // Reset RX_DR (bit 6) in STATUS register by writing 1
+  w_register(STATUS, (1 << RX_DR));
+
+  return;
 }
 
-void gpio_irq_handler(uint gpio) {
-  // Value of STATUS & FIFO_STATUS register
-  uint8_t status, fifo_status;
-
-  // Value of STATUS register interrupt bits 
-  uint8_t rx_dr, tx_ds, max_rt;
-  
-  // Value of FIFO_STATUS RX FIFO empty flag
-  uint8_t rx_empty;
-
-  // PIN_BTN used to Tx message
-  if (gpio == PIN_BTN) {
-    send_msg = true;
-  }
-
+uint8_t check_irq_bit(void) {
   // Value of the STATUS register
-  status = r_register(STATUS);
+  uint8_t status = r_register(STATUS);
 
   // Test which interrupt was asserted
-  rx_dr = (status >> RX_DR) & 1; // Asserted when packet received
-  tx_ds = (status >> TX_DS) & 1; // Asserted when auto-acknowledge received
-  max_rt = (status >> MAX_RT) & 1; // Asserted when max retries reached
+  uint8_t rx_dr = (status >> RX_DR) & 1; // Asserted when packet received
+  uint8_t tx_ds = (status >> TX_DS) & 1; // Asserted when auto-acknowledge received
+  uint8_t max_rt = (status >> MAX_RT) & 1; // Asserted when max retries reached
 
-  // Value of the FIFO_STATUS register
-  fifo_status = r_register(FIFO_STATUS);
-
-  // Test if RX FIFO is empty (1) or not (0)
-  rx_empty = (fifo_status >> RX_EMPTY) & 1;
-
-  // If packet received
   if (rx_dr)
-  {
-    // While RX FIFO is not empty
-    while (!rx_empty)
-    {
-      // Read the packet into bufferIn[9]
-      rx_message(bufferIn);
-
-      // printf bufferIn[9] value for debugging
-      printf("Rx message: %s\n", bufferIn);
-
-
-      /**
-       * The packet will always contain the PTX ID followed
-       * by the moisture value. A space delimiter is used.
-       * 
-       * e.g. "PTX-1 50"
-       * 
-       * ptr will now point to "PTX-1"
-       */ 
-      char *ptr = strtok(bufferIn, delimiter);
-
-      // Put ptr value ("PTX-1") into ptx_id[5]
-      sprintf(ptx_id, ptr);
-
-      // ptr now points to moisture value
-      ptr = strtok(NULL, delimiter);
-
-      char *ptr_2;
-
-      // moisture is now ptr value converted to int
-      moisture = strtol(ptr, &ptr_2, 10);
-
-      // printf ptx_id & moisture for debugging
-      printf("ID: %s, Moisture: %d\n", ptx_id, moisture);
-
-      // If moisture is less than 60%
-      if (moisture < 60)
-      {
-        printf("Moisture less than 60%%\n");
-
-        // If ball valve not (already) active
-        if (!motor_on)
-        {
-          // Send 10000 (ms) to core1 FIFO
-          multicore_fifo_push_blocking(10000);
-        }
-        
-      }
-
-      fifo_status = r_register(FIFO_STATUS); // Read value of STATUS register again
-      rx_empty = (fifo_status >> RX_EMPTY) & 1; // Check if RX FIFO is now empty (1) or not (0)
-    }
-
-    // Reset RX_DR (bit 6) in STATUS register by writing 1
-    w_register(STATUS, (1 << RX_DR));
+  { 
+    // Indicate RX_DR bit asserted in STATUS register
+    return RX_DR_ASSERTED; 
   }
 
-  // Auto-acknowledge received from PRX
   if (tx_ds)
   {
-    printf("Auto-acknowledge received from PRX\n");
-
-    // Reset TX_DS (bit 5) in STATUS register by writing 1
+    // Reset MAX_RT (bit 4) in STATUS register by writing 1
     w_register(STATUS, (1 << TX_DS));
+    // Indicate TX_DS bit asserted in STATUS register
+    return TX_DS_ASSERTED; 
   }
 
-  // Maximum Tx retries without acknowledgement
   if (max_rt)
   {
-    printf("Maximum Tx retransmits reached\n");
-
     // Reset MAX_RT (bit 4) in STATUS register by writing 1
     w_register(STATUS, (1 << MAX_RT));
+    // Indicate MAX_RT bit asserted in STATUS register
+    return MAX_RT_ASSERTED; 
   }
+
+  // Indicate no interrupt asserted in STATUS register
+  return NONE_ASSERTED;
 }
 
-
 // Print register values for debugging
-void debug_registers() {
-  uint8_t value;
-  uint8_t buf[5];
-
+void debug_registers(void) {
+  uint8_t value = 0;
+  
   value = r_register(CONFIG);
   printf("CONFIG: 0x%X\n", value);
 
@@ -724,32 +717,34 @@ void debug_registers() {
   printf("RF_SETUP: 0x%X\n", value);
 
   value = r_register(EN_AA);
-  printf("EN_AA: 0x%X\n", value);
+  printf("EN_AA: 0x%X\n\n", value);
 
-  r_register_all(RX_ADDR_P0, buf, 5);
-  printf("RX_ADDR_P0: 0x%X 0x%X 0x%X 0x%X 0x%X\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
+  return;
+}
 
-  r_register_all(RX_ADDR_P1, buf, 5);
-  printf("RX_ADDR_P1: 0x%X 0x%X 0x%X 0x%X 0x%X\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
+void debug_rx_address_pipes(uint8_t reg) {
+  uint8_t buffer[5];
 
-  value = r_register(RX_ADDR_P2);
-  printf("RX_ADDR_P2: 0x%X\n", value);
+  switch (reg)
+  {
+    case RX_ADDR_P0:
+      r_register_all(RX_ADDR_P0, buffer, FIVE_BYTES);
+      printf("RX_ADDR_P0: 0x%X 0x%X 0x%X 0x%X 0x%X\n", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4]);
+    break;
 
-  value = r_register(RX_ADDR_P3);
-  printf("RX_ADDR_P3: 0x%X\n", value);
+    case RX_ADDR_P1:
+      r_register_all(RX_ADDR_P1, buffer, FIVE_BYTES);
+      printf("RX_ADDR_P1: 0x%X 0x%X 0x%X 0x%X 0x%X\n", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4]);
+    break;
 
-  value = r_register(RX_ADDR_P4);
-  printf("RX_ADDR_P4: 0x%X\n", value);
-
-  value = r_register(RX_ADDR_P5);
-  printf("RX_ADDR_P5: 0x%X\n", value);
-
-  value = r_register(RX_PW_P0);
-  printf("RX_PW_P0: 0x%X\n", value);
-
-  value = r_register(RX_PW_P1);
-  printf("RX_PW_P1: 0x%X\n", value);
-
-  r_register_all(TX_ADDR, buf, 5);
-  printf("TX_ADDR: 0x%X 0x%X 0x%X 0x%X 0x%X\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
+    case TX_ADDR:
+      r_register_all(RX_ADDR_P1, buffer, FIVE_BYTES);
+      printf("TX_ADDR: 0x%X 0x%X 0x%X 0x%X 0x%X\n", buffer[0], buffer[1], buffer[2], buffer[3], buffer[4]);
+    break;
+    
+    default:
+      buffer[LSB] = r_register(reg);
+      printf("RX_ADDR_P%d: 0x%X\n", reg - 10, buffer[LSB]);
+    break;
+  }
 }

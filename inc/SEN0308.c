@@ -52,13 +52,12 @@ void calibrate() {
 
 uint8_t read_moisture() {
     uint16_t adc_conversion;
-    uint8_t percentage, buffer[4];
+    uint8_t percentage, buffer[5];
     float voltage, sum;
 
     // Power DFRobot sensor
     gpio_put(PIN_DFR, HIGH);
 
-    // Wait for ADC or you get an erroneous initial reading
     sleep_ms(1000);
 
     for (size_t i = 0; i < 5; i++)
@@ -74,8 +73,6 @@ uint8_t read_moisture() {
 
       // Store each reading to calculate average
       buffer[i] = percentage;
-
-      printf("Voltage: %f V, Percentage: %d\n", voltage, percentage);
 
       sleep_ms(500);
     }

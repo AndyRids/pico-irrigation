@@ -15,7 +15,7 @@
 #define PIN_ADC   27 // ADC1
 #define PIN_DFR   26 // Power on DFRobot moisture sensor 
 
-#define HIGH  1
-#define LOW   0
+// GPIO pin direction
+typedef enum { LOW, HIGH } pin_direction_t;
 
 #endif
