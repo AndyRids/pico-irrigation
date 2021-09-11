@@ -79,7 +79,7 @@ typedef enum { PTX_0, PTX_1, PTX_2, PTX_3, PTX_4, PTX_5 } ptx_id_t;
 
 typedef struct
 { 
-  ptx_id_t ptx_id;
+  ptx_id_t ptx_id : 8;
   uint8_t moisture : 8;
 } payload_t;
 
@@ -132,7 +132,7 @@ The interrupt handler adds a function pointer for the `check_irq_bit` function i
 ```C
 typedef enum { NONE_ASSERTED, RX_DR_ASSERTED, TX_DS_ASSERTED, MAX_RT_ASSERTED } asserted_bit_t;
 ```
-
+The main loop will then act accordingly. A PRX will call the `rx_message(&payload_rx)` function to receive the payload and check the transmitted moisture value. If the moisture is less than a certain percentage, then the GPIO pin switching on the motorized ball valve (via a transistor) will be driven high for 10 seconds.
 
 ```C
 #include "pico/util/queue.h"
