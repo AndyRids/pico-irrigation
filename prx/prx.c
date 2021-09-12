@@ -15,6 +15,7 @@ void gpio_irq_handler() {
 }
 
 int64_t alarm_callback(alarm_id_t id, void *user_data) {
+  printf("Switching motor off\n");
   // Turn off motor
   gpio_put(PIN_MTR, LOW);
 
@@ -80,7 +81,7 @@ int main(void)
             
             if (payload_rx.moisture < 60 && !gpio_get(PIN_MTR))
             {
-              printf("Switching PIN_MTR on");
+              printf("Switching PIN_MTR on\n");
               gpio_put(PIN_MTR, HIGH); // Power motor
               add_alarm_in_ms(10000, alarm_callback, NULL, false); // Add alarm to turn off motor in 10 seconds
             }
