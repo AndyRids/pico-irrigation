@@ -6,8 +6,10 @@
 
 typedef struct { void *func; } queue_entry_t;
 
-static queue_t results_queue;
 static queue_t call_queue;
+
+  // send mssage flag
+static volatile bool send_msg = true;
 
  /**
    * IRQ handler function for the active-low IRQ pin
@@ -37,9 +39,6 @@ int main()
   // Tx payload format; PTX id, PRX data pipe, soil moisture %
   payload_t payload_tx = { PTX_0, 0 };
 
-  // send mssage flag
-  bool send_msg = true;
-
   init_spi(); // Initialise SPI and GPIO pins
 
   init_adc(); // Initialise ADC and GPIO pins
@@ -68,15 +67,18 @@ int main()
   {
     if (send_msg)
     {
+      send_msg = false; // Reset send message flag
+
+      // Read moisture value into payload
       payload_tx.moisture = read_moisture();
 
+      // Transmit the payload to the PRX
       tx_message(&payload_tx);
 
       printf("Tx message #%d: %d%% moisture\n", msg, payload_tx.moisture);
 
+      // Tranmission count for debugging
       msg++;
-
-      send_msg = false;
     }
 
     if (!queue_is_empty(&call_queue))
@@ -92,12 +94,12 @@ int main()
       switch (irq_bit)
       {       
         case RX_DR_ASSERTED:
-          // Not used on PRX
+          // Not possible in this PTX example as never enters Rx mode
         break;
         
         case TX_DS_ASSERTED:
           printf("Auto-acknowledge received\n");
-          send_msg = true; // auto-acknowledge received from PRX
+          sleep(10000);
         break;
 
         case MAX_RT_ASSERTED:
