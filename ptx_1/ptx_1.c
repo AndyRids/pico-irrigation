@@ -99,7 +99,7 @@ int main()
         
         case TX_DS_ASSERTED:
           printf("Auto-acknowledge received\n");
-          sleep(10000);
+          sleep_ms(10000);
         break;
 
         case MAX_RT_ASSERTED:
