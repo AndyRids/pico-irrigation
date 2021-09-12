@@ -29,6 +29,9 @@ int main(void)
 
   init_spi(); // Initialise SPI and GPIO pins
 
+  gpio_init(PIN_MTR);
+  gpio_set_dir(PIN_MTR, GPIO_OUT);
+
   init_nrf24(); // Initial config when device first powered
 
   init_nrf24_prx_registers(); // Config PRX specific registers
@@ -68,16 +71,21 @@ int main(void)
       switch (irq_bit)
       {      
         case RX_DR_ASSERTED:
-          rx_message(&payload_rx);
 
-          printf("Rx Message - PTX ID: %d, Data Pipe: %d, Moisture: %d\n", payload_rx.ptx_id, payload_rx.data_pipe, payload_rx.moisture);
-          /*
-          if (payload_rx.moisture < 60 && !gpio_get_dir(PIN_MTR))
+          do
           {
-            gpio_put(PIN_MTR, HIGH); // Power motor
-            add_alarm_in_ms(10000, alarm_callback, NULL, false); // Add alarm to turn off motor in 10 seconds
-          }
-          */
+            rx_message(&payload_rx);
+
+            printf("Rx Message - PTX ID: %d, Data Pipe: %d, Moisture: %d\n", payload_rx.ptx_id, payload_rx.data_pipe, payload_rx.moisture);
+            
+            if (payload_rx.moisture < 60 && !gpio_get(PIN_MTR))
+            {
+              printf("Switching PIN_MTR on");
+              gpio_put(PIN_MTR, HIGH); // Power motor
+              add_alarm_in_ms(10000, alarm_callback, NULL, false); // Add alarm to turn off motor in 10 seconds
+            }
+          } while (!check_fifo_status(RX_EMPTY));
+          
         break;
         
         case TX_DS_ASSERTED:
