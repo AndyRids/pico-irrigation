@@ -330,9 +330,8 @@ void init_nrf24(void) {
    * MAX_RT         4     1    Maximum Tx retransmits interrupt
    * RX_P_NO       1:3   111   Data pipe number for available payload 
    * TX_FULL        0     0    Tx FIFO full flag
-
-   * Value written to RF_SETUP register: 0b01110000
    * 
+   * Value written to RF_SETUP register: 0b01110000
   **/
   w_register(STATUS, 0b01110000); // Reset RX_DR, TX_DS & MAX_RT
 }
@@ -421,15 +420,15 @@ void init_nrf24_prx_registers(void) {
    * (reserved)    6:7    00     Only '00' allowed
    * RX_P_NO       0:5  000101   Bytes in in data pipe RX payload 
    * 
-   * Value written to RX_PW_P0 - RX_PW_P5 register: 0b00000101 (5)
+   * Value written to RX_PW_P0 - RX_PW_P5 register: sizeof(payload_t)
    * 
   **/
-  w_register(RX_PW_P0, THREE_BYTES);
-  w_register(RX_PW_P1, THREE_BYTES);
-  w_register(RX_PW_P2, THREE_BYTES);
-  w_register(RX_PW_P3, THREE_BYTES);
-  w_register(RX_PW_P4, THREE_BYTES);
-  w_register(RX_PW_P5, THREE_BYTES);
+  w_register(RX_PW_P0, sizeof(payload_t));
+  w_register(RX_PW_P1, sizeof(payload_t));
+  w_register(RX_PW_P2, sizeof(payload_t));
+  w_register(RX_PW_P3, sizeof(payload_t));
+  w_register(RX_PW_P4, sizeof(payload_t));
+  w_register(RX_PW_P5, sizeof(payload_t));
 
   /**
    * A primary receiver (PRX) can receive data from
@@ -591,7 +590,7 @@ void set_mode(xcvr_mode_t transceiver_mode) {
     break;
 
     default:
-      // TODO: error handling
+      // TODO:
     break;
   }
 }
@@ -659,8 +658,8 @@ void rx_message(payload_prx_t* msg) {
   // Store data pipe number (STATUS register bit 1:3) in payload_prx_t* msg
   (*msg).data_pipe = (status >> 1) & PIPE_MASK;
 
-  // Reset RX_DR (bit 6) in STATUS register by writing 1
-  w_register(STATUS, (1 << RX_DR));
+    // Reset RX_DR (bit 6) in STATUS register by writing 1
+    w_register(STATUS, (1 << RX_DR));
 
   return;
 }
@@ -698,6 +697,36 @@ uint8_t check_irq_bit(void) {
 
   // Indicate no interrupt asserted in STATUS register
   return NONE_ASSERTED;
+}
+
+// typedef enum { RX_EMPTY, RX_FULL, TX_EMPTY = 4, TX_FULL } fifo_status_t;
+
+uint8_t check_fifo_status(fifo_status_t bit_flag) {
+  // Read value of FIFO_STATUS register
+  uint8_t fifo_status = r_register(FIFO_STATUS);
+
+  switch (bit_flag)
+  {
+    case RX_EMPTY:
+      return (fifo_status >> RX_EMPTY) & 1;
+    break;
+
+    case RX_FULL:
+      return (fifo_status >> RX_FULL) & 1;
+    break;
+
+    case TX_EMPTY:
+      return (fifo_status >> TX_EMPTY) & 1;
+    break;
+
+    case TX_FULL:
+      return (fifo_status >> TX_FULL) & 1;
+    break;
+    
+    default:
+      return 0;
+    break;
+  }
 }
 
 // Print register values for debugging
