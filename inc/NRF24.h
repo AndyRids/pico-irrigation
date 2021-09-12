@@ -27,6 +27,9 @@ typedef enum { TX_MODE, RX_MODE } xcvr_mode_t;
 // Individual PTX ID, which can correspond to the relevant PRX data pipe
 typedef enum { PTX_0, PTX_1, PTX_2, PTX_3, PTX_4, PTX_5 } ptx_id_t;
 
+// FIFO_STATUS register TX & RX FIFO full/empty flags
+typedef enum { RX_EMPTY, RX_FULL, TX_EMPTY = 4, TX_FULL } fifo_status_t;
+
 // Interrupt bit asserted in STATUS register
 typedef enum { NONE_ASSERTED, RX_DR_ASSERTED, TX_DS_ASSERTED, MAX_RT_ASSERTED } asserted_bit_t;
 
@@ -120,6 +123,9 @@ void rx_message(payload_prx_t *msg);
 
 // check which interrupt bit is asserted in STATUS register
 uint8_t check_irq_bit(void);
+
+// Check if RX FIFO is empty
+uint8_t check_fifo_status(fifo_status_t bit_flag);
 
 // printf register values
 void debug_registers(void);
