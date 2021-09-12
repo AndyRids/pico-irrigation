@@ -6,9 +6,9 @@ The long-term plan is to have a Pico with an NRF24 acting as the primary receive
 
 **TODO**:
 
-1. Have the rx_message function check the RX_FIFO register for other payloads after receipt of an initial payload
-2. Implement deep sleep on the PTX device after successful transmission of a payload and receipt of the auto-acknowledgement.
-3. Breakout the NRF24L01 driver into a separate repository
+- [x] Have the rx_message function check the RX_FIFO register for other payloads after receipt of an initial payload
+- [] Implement deep sleep on the PTX device after successful transmission of a payload and receipt of the auto-acknowledgement.
+- [] Breakout the NRF24L01 driver into a separate repository
 ## Hardware used
 
 * Raspberry Pi Pico
